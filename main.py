@@ -1,5 +1,5 @@
 import gradio as gr
-from utils.helper import load_world, save_world, generate_game_state, run_action
+from helper import load_world, save_world, generate_game_state, run_action
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from config import OPENAI_API_KEY, WORLD_FILE_PATH, SAVED_WORLD_PATH

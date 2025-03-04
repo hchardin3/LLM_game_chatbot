@@ -1,180 +1,225 @@
 import json
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+from langchain.prompts import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+)
 from config import OPENAI_API_KEY
-from utils.helper import save_world
+from helper import save_world
+from prompts import *
+from typing import Literal
 
-def generate_world():
+
+def generate_npcs(
+    world_type, world_name, kingdom_name, town_name, town_description, num_npcs=3
+):
+    """Generate NPCs for a given town based on world type."""
+    if num_npcs < 2:
+        raise ValueError("Number of NPCs must be at least 2.")
+
+    if world_type == "Fantasy":
+        npc_prompt = generate_npc_prompt_fantasy(
+            world_name, kingdom_name, town_name, town_description, num_npcs
+        )
+    elif world_type == "Sci-Fi":
+        npc_prompt = generate_npc_prompt_scifi(world_name, town_name, num_npcs)
+    elif world_type == "Cyberpunk":
+        npc_prompt = generate_npc_prompt_cyberpunk(world_name, town_name, num_npcs)
+
+    llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=OPENAI_API_KEY)
+
+    response = llm.invoke(npc_prompt)
+    npcs_output = response.content.strip()
+    npcs = {}
+
+    # Parsing NPC responses correctly
+    lines = [line.strip() for line in npcs_output.split("\n") if line.strip()]
+
+    current_npc = None
+    for line in lines:
+        if "Character" in line and "Name:" in line:
+            current_npc = line.replace("Character", "").replace("Name:", "").strip()
+            npcs[current_npc] = {"name": current_npc, "description": ""}
+        elif "Description:" in line and current_npc:
+            npcs[current_npc]["description"] = line.replace("Description:", "").strip()
+        elif current_npc and npcs[current_npc]["description"] == "":
+            npcs[current_npc][
+                "description"
+            ] = line  # Handle cases where description is on a new line
+
+    # Remove empty NPCs (if any due to parsing issues)
+    npcs = {k: v for k, v in npcs.items() if v["description"]}
+
+    return npcs
+
+
+def generate_world(
+    world_type: Literal["Fantasy", "Sci-Fi", "Cyberpunk"] = "Fantasy",
+    custom_system_prompt: str = None,
+    world_concept: str = None,
+    world_name: str = None,
+    world_description: str = None,
+) -> dict:
+    if world_type not in ["Fantasy", "Sci-Fi", "Cyberpunk"]:
+        raise ValueError(
+            "Invalid world type. Choose from: 'Fantasy', 'Sci-Fi', 'Cyberpunk'."
+        )
+
     """Generates a fantasy world with kingdoms, towns, and NPCs."""
     llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=OPENAI_API_KEY)
 
     # **Step 1: Generate World Information**
-    system_prompt = """
-    Your job is to help create interesting fantasy worlds that players would love to play in.
-    Instructions:
-    - Only generate in plain text without formatting.
-    - Use simple clear language without being flowery.
-    - You must stay below 3-5 sentences for each description.
-    """
-
-    world_prompt = """
-    Generate a creative description for a unique fantasy world with an
-    interesting concept around cities built on the backs of massive beasts.
-
-    Output content in the form:
-    World Name: <WORLD NAME>
-    World Description: <WORLD DESCRIPTION>
-
-    World Name:
-    """
+    if world_type == "Fantasy":
+        system_prompt = generate_system_prompt_fantasy(custom_system_prompt)
+        world_prompt = generate_world_prompt_fantasy(
+            world_concept, world_name, world_description
+        )
+    elif world_type == "Sci-Fi":
+        system_prompt = generate_system_prompt_scifi(custom_system_prompt)
+        world_prompt = generate_world_prompt_scifi(
+            world_concept, world_name, world_description
+        )
+    elif world_type == "Cyberpunk":
+        system_prompt = generate_system_prompt_cyberpunk(custom_system_prompt)
+        world_prompt = generate_world_prompt_cyberpunk(
+            world_concept, world_name, world_description
+        )
 
     print("🌍 Generating a new world...")
-    
-    response = llm.invoke(ChatPromptTemplate.from_messages([
-        SystemMessagePromptTemplate.from_template(system_prompt),
-        HumanMessagePromptTemplate.from_template(world_prompt)
-    ]).format())
+
+    response = llm.invoke(
+        ChatPromptTemplate.from_messages(
+            [
+                SystemMessagePromptTemplate.from_template(system_prompt),
+                HumanMessagePromptTemplate.from_template(world_prompt),
+            ]
+        ).format()
+    )
 
     world_output = response.content.strip().split("\n", 1)
-    
+
     if len(world_output) < 2:
         raise ValueError("🚨 AI failed to generate a valid world structure.")
 
     world = {
-        "name": world_output[0].replace('World Name: ', '').strip(),
-        "description": world_output[1].replace('World Description:', '').strip(),
-        "kingdoms": {}
+        "name": world_output[0].replace("World Name: ", "").strip(),
+        "description": world_output[1].replace("World Description:", "").strip(),
+        world_structure_types[world_type][0]: {},
     }
 
     print(f"✅ World created: {world['name']}")
 
     ### **Step 2: Generate Kingdoms**
-    print("🏰 Generating kingdoms...")
-    
-    kingdom_prompt = f"""
-    Create 3 different kingdoms for a fantasy world.
-    For each kingdom, generate a name and a description based on the world it's in.
+    print(f"🏰 Generating {world_structure_types[world_type][0]}...")
 
-    Output content in the form:
-    Kingdom 1 Name: <KINGDOM NAME>
-    Kingdom 1 Description: <KINGDOM DESCRIPTION>
-    Kingdom 2 Name: <KINGDOM NAME>
-    Kingdom 2 Description: <KINGDOM DESCRIPTION>
-    Kingdom 3 Name: <KINGDOM NAME>
-    Kingdom 3 Description: <KINGDOM DESCRIPTION>
+    if world_type == "Fantasy":
+        structure_prompt = generate_kingdom_prompt_fantasy(
+            world["name"], world["description"]
+        )
+    elif world_type == "Sci-Fi":
+        structure_prompt = generate_planet_prompt_scifi(
+            world["name"], world["description"]
+        )
+    elif world_type == "Cyberpunk":
+        structure_prompt = generate_city_prompt_cyberpunk(
+            world["name"], world["description"]
+        )
 
-    World Name: {world['name']}
-    World Description: {world['description']}
-    
-    Kingdom 1 Name:
-    """
+    response = llm.invoke(structure_prompt)
+    structure_output = response.content.strip()
+    structures = {}
 
-    response = llm.invoke(kingdom_prompt)
-    kingdoms_output = response.content.strip()
-    kingdoms = {}
-
-    for output in kingdoms_output.split("\n\n"):
+    for output in structure_output.split("\n\n"):
         lines = output.strip().split("\n")
         if len(lines) < 2:
-            print(f"⚠️ Skipping malformed kingdom data: {output}")
+            print(
+                f"⚠️ Skipping malformed {world_structure_types[world_type][0]} data: {output}"
+            )
             continue
 
-        kingdom_name = lines[0].replace("Kingdom Name: ", "").strip()
-        kingdom_description = lines[1].replace("Kingdom Description: ", "").strip()
-        kingdoms[kingdom_name] = {"name": kingdom_name, "description": kingdom_description, "towns": {}}
+        structure_name = (
+            lines[0]
+            .replace(f"{world_structure_types[world_type][0]} Name: ", "")
+            .strip()
+        )
+        structure_description = (
+            lines[1]
+            .replace(f"{world_structure_types[world_type][0]} Description: ", "")
+            .strip()
+        )
+        structures[structure_name] = {
+            "name": structure_name,
+            "description": structure_description,
+            {world_structure_types[world_type][1]}: {},
+        }
 
-    world["kingdoms"] = kingdoms
-    print("✅ Kingdoms generated.")
+    world[{world_structure_types[world_type][0]}] = structures
+    print(f"✅ {world_structure_types[world_type][0]} generated.")
 
     ### **Step 3: Generate Towns**
-    print("🏙️ Generating towns...")
+    print(f"🏙️ Generating {world_structure_types[world_type][1]}...")
 
-    for kingdom_name, kingdom_data in world["kingdoms"].items():
-        town_prompt = f"""
-        Create 3 different towns for the kingdom {kingdom_name}.
-        Provide a name and description for each.
+    for structure_name, structure_data in world["kingdoms"].items():
+        if world_type == "Fantasy":
+            smaller_structure_prompt = generate_town_prompt_fantasy(
+                structure_name, structure_data["description"]
+            )
+        elif world_type == "Sci-Fi":
+            smaller_structure_prompt = generate_planet_prompt_scifi(
+                structure_name, structure_data["description"]
+            )
+        elif world_type == "Cyberpunk":
+            smaller_structure_prompt = generate_city_prompt_cyberpunk(
+                structure_name, structure_data["description"]
+            )
 
-        Output content in the form:
-        Town 1 Name: <TOWN NAME>
-        Town 1 Description: <TOWN DESCRIPTION>
-        Town 2 Name: <TOWN NAME>
-        Town 2 Description: <TOWN DESCRIPTION>
-        Town 3 Name: <TOWN NAME>
-        Town 3 Description: <TOWN DESCRIPTION>
+        response = llm.invoke(smaller_structure_prompt)
+        ss_output = response.content.strip()
+        ss = {}
 
-        World Name: {world['name']}
-        Kingdom Name: {kingdom_name}
-        Kingdom Description: {kingdom_data['description']}
-        
-        Town 1 Name:
-        """
-
-        response = llm.invoke(town_prompt)
-        towns_output = response.content.strip()
-        towns = {}
-
-        for output in towns_output.split("\n\n"):
+        for output in ss_output.split("\n\n"):
             lines = output.strip().split("\n")
             if len(lines) < 2:
-                print(f"⚠️ Skipping malformed town data: {output}")
+                print(
+                    f"⚠️ Skipping malformed {world_structure_types[world_type][1]} data: {output}"
+                )
                 continue
 
-            town_name = lines[0].replace("Town Name: ", "").strip()
-            town_description = lines[1].replace("Town Description: ", "").strip()
-            towns[town_name] = {"name": town_name, "description": town_description, "npcs": {}}
+            ss_name = (
+                lines[0]
+                .replace(f"{world_structure_types[world_type][1]} Name: ", "")
+                .strip()
+            )
+            ss_description = (
+                lines[1]
+                .replace(f"{world_structure_types[world_type][1]} Description: ", "")
+                .strip()
+            )
+            ss[ss_name] = {"name": ss_name, "description": ss_description, "npcs": {}}
 
-        kingdom_data["towns"] = towns
+        kingdom_data[world_structure_types[world_type][1]] = ss
 
-    print("✅ Towns generated.")
+    print(f"✅ {world_structure_types[world_type][1]} generated.")
 
     ### **Step 4: Generate NPCs**
-    print("👤 Generating NPCs...")
+    print(f"👤 Generating {world_structure_types[world_type][2]}...")
 
-    for kingdom_name, kingdom_data in world["kingdoms"].items():
-        for town_name, town_data in kingdom_data["towns"].items():
-            npc_prompt = f"""
-            Create 3 unique characters (NPCs) for the town {town_name} in {kingdom_name}.
-            Provide a name and description for each.
-
-            Output content in the form:
-            Character 1 Name: <CHARACTER NAME>
-            Character 1 Description: <CHARACTER DESCRIPTION>
-            Character 2 Name: <CHARACTER NAME>
-            Character 2 Description: <CHARACTER DESCRIPTION>
-            Character 3 Name: <CHARACTER NAME>
-            Character 3 Description: <CHARACTER DESCRIPTION>
-
-            World Name: {world['name']}
-            Kingdom Name: {kingdom_name}
-            Town Name: {town_name}
-            
-            Character 1 Name:
-            """
-
-            response = llm.invoke(npc_prompt)
-            npcs_output = response.content.strip()
-            npcs = {}
-
-            for output in npcs_output.split("\n\n"):
-                lines = output.strip().split("\n")
-                
-                # Ensure the response contains both a name and a description
-                npc_name = None
-                npc_description = None
-
-                for line in lines:
-                    if "Character Name:" in line:
-                        npc_name = line.replace("Character Name: ", "").strip()
-                    elif "Character Description:" in line:
-                        npc_description = line.replace("Character Description: ", "").strip()
-
-                if npc_name and npc_description:
-                    npcs[npc_name] = {"name": npc_name, "description": npc_description}
-                else:
-                    print(f"⚠️ Skipping incomplete NPC data: {output}")
-
+    for kingdom_name, kingdom_data in world[
+        world_structure_types[world_type][0]
+    ].items():
+        for town_name, town_data in kingdom_data[
+            world_structure_types[world_type][1]
+        ].items():
+            npcs = generate_npcs(
+                world_type,
+                world["name"],
+                kingdom_name,
+                town_name,
+                town_data["description"],
+            )
             town_data["npcs"] = npcs
-        
+
     print("✅ NPCs generated.")
     save_world(world)
 
