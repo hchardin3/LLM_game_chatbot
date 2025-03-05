@@ -1,5 +1,5 @@
 from together import Together
-from config import TOGETHER_API_KEY
+from backend.config import TOGETHER_API_KEY
 
 client = Together(api_key=TOGETHER_API_KEY)
 

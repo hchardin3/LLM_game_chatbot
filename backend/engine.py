@@ -1,44 +1,15 @@
 import json
 import os
 from langchain_openai import ChatOpenAI
-from config import OPENAI_API_KEY
-from prompts import world_structure_types
+from backend.prompts import world_structure_types
 from typing import Literal
+from backend.world_creation import generate_world
+from backend.config import WORLD_FOLDER, OPENAI_API_KEY
+from backend.moderation_safety import is_safe
+from backend.helper import *
+
 
 llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=OPENAI_API_KEY, temperature=0.9)
-
-def save_world(world_data, filename="fantasy_world.json"):
-    """Saves the generated world as a JSON file."""
-    with open(filename, 'w') as f:
-        json.dump(world_data, f, indent=4)
-    print(f"✅ World saved to {filename}")
-
-def load_world(filename="Nomadia.json"):
-    """Loads a previously saved fantasy world from a JSON file."""
-    
-    if not os.path.exists(filename):
-        print(f"❌ Error: File '{filename}' not found!")
-        return None
-
-    with open(filename, 'r', encoding="utf-8") as f:
-        world_data = json.load(f)
-
-    # Check if the loaded data is actually a string and needs another JSON decode
-    if isinstance(world_data, str):  
-        try:
-            world_data = json.loads(world_data)  # Convert JSON string to dict
-        except json.JSONDecodeError:
-            print("❌ Error: JSON inside the file is malformed!")
-            return None
-
-    if not isinstance(world_data, dict):
-        print(f"❌ Error: Unexpected data type {type(world_data)} in '{filename}'")
-        return None
-
-    print(f"🌍 Loaded world: {world_data['name']}")
-    return world_data
-
-
 
 def run_action(message: str, history, game_state: dict, game_type: Literal["Fantasy", "Sci-Fi", "Cyberpunk"] = "Fantasy"):
     print("type of message ", type(message))
@@ -58,7 +29,6 @@ def run_action(message: str, history, game_state: dict, game_type: Literal["Fant
                         Ex. (You look north and see...)"""
         
         # Ensure game_state is valid
-        print("1111111111111111111111111111111111111")
         world_info = f"""
         World: {game_state.get('world', 'Unknown')}
         {world_structure_types[game_type][0]}: {game_state.get(world_structure_types[game_type][0], 'Unknown')}
@@ -71,21 +41,13 @@ def run_action(message: str, history, game_state: dict, game_type: Literal["Fant
             {"role": "user", "content": world_info}
         ]
 
-        print("222222222222222222222222222222222222")
-
         for action in history:
             messages.append({"role": "assistant", "content": action[0]})
             messages.append({"role": "user", "content": action[1]})
 
-        print("333333333333333333333333333333333333333")
-
         messages.append({"role": "user", "content": message})
 
-        print("44444444444444444444444444444444")
-
         response = llm.invoke("\n".join([msg["content"] for msg in messages]))
-
-        print("jjjjjjjjjjjjjjjjjjj     ", type(response.content.strip()))
 
         return response.content.strip() if response else "Error: No response generated."
 
@@ -113,7 +75,10 @@ def generate_game_state(world: dict, game_type: Literal["Fantasy", "Sci-Fi", "Cy
     Write in second person. For example: "You are Jack."
     Write in present tense. For example: "You stand at..."
     First describe the character and their backstory.
-    Then describe where they start and what they see around them."""
+    Then describe where they start and what they see around them.
+    At the end, you have to subtly direct the player towards his first quest so that he can start his adventure. 
+    For example: "Your teacher tasks you to deliver this message to the headmaster of the school."
+    """
 
     world_info = f"""
     World: {world}
@@ -132,7 +97,7 @@ def generate_game_state(world: dict, game_type: Literal["Fantasy", "Sci-Fi", "Cy
     start = start_response.content.strip() if start_response else "Error: No start text generated."
 
     return {
-        "world": world["name"],
+        "world": world,
         world_structure_types[game_type][0]: kingdom["name"],
         world_structure_types[game_type][1]: town["name"],
         "start": start,
@@ -141,3 +106,47 @@ def generate_game_state(world: dict, game_type: Literal["Fantasy", "Sci-Fi", "Cy
         "hp": 100,
         "stamina": 100,
     }
+
+def start_game(world_data):
+    """Initialize game state and return necessary UI updates."""
+
+    if not isinstance(world_data, dict) or "kingdoms" not in world_data:
+        return "❌ Error: Invalid world file format. Missing 'kingdoms' key.", None
+
+    # Generate game state
+    game_state = generate_game_state(world_data)
+
+    return f"📜 Game started! Current state: {update_game_state(game_state)}", game_state
+
+def list_worlds():
+    """Retrieve available world files in the folder."""
+    return [f for f in os.listdir(WORLD_FOLDER) if f.endswith(".json")]
+
+def load_selected_world(world_file):
+    """Load the selected world and ensure it's returned as a dictionary."""
+    world_path = os.path.join(WORLD_FOLDER, world_file)
+    
+    with open(world_path, "r") as f:
+        world_data = load_world(world_path)  # Ensure it is read as a dictionary
+
+    return world_data.get("description", "No description available."), world_data
+
+def create_new_world(template, custom_prompt):
+    """Generate a new world based on a template or custom input."""
+    world_data = generate_world(template, custom_prompt)
+    save_world(world_data, os.path.join(WORLD_FOLDER, f"{world_data['name']}.json"))
+    return f"New world '{world_data['name']}' created!", list_worlds(), world_data
+
+def update_game_state(game_state):
+    """Display inventory, quests, and stats."""
+    return f"Inventory: {game_state.get('inventory', 'Unknown')}, Quests: {game_state.get('quests', 'Unknown')}, Stats: HP {game_state.get('hp', 'Unknown')}, Stamina {game_state.get('stamina', 'Unknown')}%"
+
+def main_loop(player_input, history, game_state):
+    """Main game loop handling player input and game progression."""
+    print("hgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg...")
+    if not is_safe(player_input):
+        return "⚠️ Your message was flagged as inappropriate. Please try again."
+    try:
+        return run_action(player_input, history, game_state)
+    except Exception as e:
+        return f"⚠️ An error occurred: {str(e)}"

@@ -5,9 +5,9 @@ from langchain.prompts import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
 )
-from config import OPENAI_API_KEY
-from helper import save_world
-from prompts import *
+from backend.config import OPENAI_API_KEY
+from backend.helper import save_world
+from backend.prompts import *
 from typing import Literal
 
 
