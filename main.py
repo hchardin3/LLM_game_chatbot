@@ -1,6 +1,7 @@
 import gradio as gr
 from backend.helper import *
 from backend.engine import *
+from backend.world_creation import generate_world
 
 def launch_ui():
     with gr.Blocks() as demo:
@@ -16,7 +17,14 @@ def launch_ui():
             with gr.Column():
                 gr.Markdown("### 🏗️ Generate a New World")
                 template_dropdown = gr.Dropdown(["Fantasy", "Sci-Fi", "Cyberpunk"], label="Select Template")
-                custom_prompt = gr.Textbox(label="Custom World Description (Optional)")
+                world_name_input = gr.Textbox(label="World Name (Optional)")
+                custom_instruction = gr.Textbox(label="Custom Instructions/Original Concept for Your World (Optional)")
+
+                num_factions = gr.Number(value=3, label="Number of Factions (3 by default)", minimum=2, maximum=5)
+                num_subfactions = gr.Number(value=3, label="Number of Subfactions per Factions (3 by default)", minimum=1, maximum=5)
+                num_npcs = gr.Number(value=3, label="Number of NPCs in each Subfaction (3 by default)", minimum=2, maximum=5)
+                    
+
                 generate_btn = gr.Button("Generate World")
 
         # ✅ Use gr.State to store actual game data
@@ -41,6 +49,19 @@ def launch_ui():
             load_selected_world_ui, 
             inputs=[world_dropdown], 
             outputs=[world_description, game_state_store]
+        )
+
+        # ✅ Corrected Generate Button Function
+        def create_new_world_ui(template, world_name, custom_prompt, nbr_factions, nbr_subfactions, nbr_npcs):
+            world_data = generate_world(template, world_name, custom_prompt, nbr_factions, nbr_subfactions, nbr_npcs)
+            save_world(world_data, os.path.join(WORLD_FOLDER, f"{world_data['name']}.json"))
+            updated_list_worlds = list_worlds()
+            return f"New world '{world_data['name']}' created!", updated_list_worlds, world_data
+        
+        generate_btn.click(
+            create_new_world_ui, 
+            inputs=[template_dropdown, world_name_input, custom_instruction, num_factions, num_subfactions, num_subfactions], 
+            outputs=[game_state_display, world_dropdown, game_state_store]
         )
 
         # ✅ Corrected Start Game Handling

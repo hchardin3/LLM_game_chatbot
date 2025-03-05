@@ -6,8 +6,10 @@ from backend.config import OPENAI_API_KEY
 
 llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=OPENAI_API_KEY, temperature=0.9)
 
-def save_world(world_data, filename="fantasy_world.json"):
+def save_world(world_data, filename=None):
     """Saves the generated world as a JSON file."""
+    if not filename:
+        filename = f"{world_data['name']}.json"
     with open(filename, 'w') as f:
         json.dump(world_data, f, indent=4)
     print(f"✅ World saved to {filename}")

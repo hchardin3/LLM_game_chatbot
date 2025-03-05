@@ -131,12 +131,6 @@ def load_selected_world(world_file):
 
     return world_data.get("description", "No description available."), world_data
 
-def create_new_world(template, custom_prompt):
-    """Generate a new world based on a template or custom input."""
-    world_data = generate_world(template, custom_prompt)
-    save_world(world_data, os.path.join(WORLD_FOLDER, f"{world_data['name']}.json"))
-    return f"New world '{world_data['name']}' created!", list_worlds(), world_data
-
 def update_game_state(game_state):
     """Display inventory, quests, and stats."""
     return f"Inventory: {game_state.get('inventory', 'Unknown')}, Quests: {game_state.get('quests', 'Unknown')}, Stats: HP {game_state.get('hp', 'Unknown')}, Stamina {game_state.get('stamina', 'Unknown')}%"

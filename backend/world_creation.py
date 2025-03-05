@@ -23,9 +23,13 @@ def generate_npcs(
             world_name, kingdom_name, town_name, town_description, num_npcs
         )
     elif world_type == "Sci-Fi":
-        npc_prompt = generate_npc_prompt_scifi(world_name, town_name, num_npcs)
+        npc_prompt = generate_npc_prompt_scifi(
+            world_name, kingdom_name, town_name, town_description, num_npcs
+        )
     elif world_type == "Cyberpunk":
-        npc_prompt = generate_npc_prompt_cyberpunk(world_name, town_name, num_npcs)
+        npc_prompt = generate_npc_prompt_cyberpunk(
+            world_name, kingdom_name, town_name, town_description, num_npcs
+        )
 
     llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=OPENAI_API_KEY)
 
@@ -56,35 +60,33 @@ def generate_npcs(
 
 def generate_world(
     world_type: Literal["Fantasy", "Sci-Fi", "Cyberpunk"] = "Fantasy",
-    custom_system_prompt: str = None,
-    world_concept: str = None,
     world_name: str = None,
-    world_description: str = None,
+    custom_prompt: str = None,
+    nbr_factions: int = 3,
+    nbr_subfactions: int = 3,
+    nbr_npcs: int = 3,
 ) -> dict:
     if world_type not in ["Fantasy", "Sci-Fi", "Cyberpunk"]:
         raise ValueError(
             "Invalid world type. Choose from: 'Fantasy', 'Sci-Fi', 'Cyberpunk'."
         )
 
+    if nbr_factions <= 0 or nbr_subfactions <= 0 or nbr_npcs <= 0:
+        raise ValueError("Number of factions, subfactions, and NPCs must be positive.")
+
     """Generates a fantasy world with kingdoms, towns, and NPCs."""
     llm = ChatOpenAI(model_name="gpt-4-turbo", openai_api_key=OPENAI_API_KEY)
 
     # **Step 1: Generate World Information**
     if world_type == "Fantasy":
-        system_prompt = generate_system_prompt_fantasy(custom_system_prompt)
-        world_prompt = generate_world_prompt_fantasy(
-            world_concept, world_name, world_description
-        )
+        system_prompt = generate_system_prompt_fantasy()
+        world_prompt = generate_world_prompt_fantasy(world_name, custom_prompt)
     elif world_type == "Sci-Fi":
-        system_prompt = generate_system_prompt_scifi(custom_system_prompt)
-        world_prompt = generate_world_prompt_scifi(
-            world_concept, world_name, world_description
-        )
+        system_prompt = generate_system_prompt_scifi()
+        world_prompt = generate_world_prompt_scifi(world_name, custom_prompt)
     elif world_type == "Cyberpunk":
-        system_prompt = generate_system_prompt_cyberpunk(custom_system_prompt)
-        world_prompt = generate_world_prompt_cyberpunk(
-            world_concept, world_name, world_description
-        )
+        system_prompt = generate_system_prompt_cyberpunk()
+        world_prompt = generate_world_prompt_cyberpunk(world_name, custom_prompt)
 
     print("🌍 Generating a new world...")
 
@@ -115,15 +117,15 @@ def generate_world(
 
     if world_type == "Fantasy":
         structure_prompt = generate_kingdom_prompt_fantasy(
-            world["name"], world["description"]
+            world["name"], world["description"], nbr_factions
         )
     elif world_type == "Sci-Fi":
         structure_prompt = generate_planet_prompt_scifi(
-            world["name"], world["description"]
+            world["name"], world["description"], nbr_factions
         )
     elif world_type == "Cyberpunk":
         structure_prompt = generate_city_prompt_cyberpunk(
-            world["name"], world["description"]
+            world["name"], world["description"], nbr_factions
         )
 
     response = llm.invoke(structure_prompt)
@@ -151,27 +153,27 @@ def generate_world(
         structures[structure_name] = {
             "name": structure_name,
             "description": structure_description,
-            {world_structure_types[world_type][1]}: {},
+            world_structure_types[world_type][1]: {},
         }
 
-    world[{world_structure_types[world_type][0]}] = structures
+    world[world_structure_types[world_type][0]] = structures
     print(f"✅ {world_structure_types[world_type][0]} generated.")
 
     ### **Step 3: Generate Towns**
     print(f"🏙️ Generating {world_structure_types[world_type][1]}...")
 
-    for structure_name, structure_data in world["kingdoms"].items():
+    for structure_name, structure_data in world[world_structure_types[world_type][0]].items():
         if world_type == "Fantasy":
             smaller_structure_prompt = generate_town_prompt_fantasy(
-                structure_name, structure_data["description"]
+                structure_name, structure_data["description"], nbr_subfactions
             )
         elif world_type == "Sci-Fi":
             smaller_structure_prompt = generate_planet_prompt_scifi(
-                structure_name, structure_data["description"]
+                structure_name, structure_data["description"], nbr_subfactions
             )
         elif world_type == "Cyberpunk":
-            smaller_structure_prompt = generate_city_prompt_cyberpunk(
-                structure_name, structure_data["description"]
+            smaller_structure_prompt = generate_cybernetics_prompt_cyberpunk(
+                structure_name, structure_data["description"], nbr_subfactions
             )
 
         response = llm.invoke(smaller_structure_prompt)
@@ -198,7 +200,7 @@ def generate_world(
             )
             ss[ss_name] = {"name": ss_name, "description": ss_description, "npcs": {}}
 
-        kingdom_data[world_structure_types[world_type][1]] = ss
+        structure_data[world_structure_types[world_type][1]] = ss
 
     print(f"✅ {world_structure_types[world_type][1]} generated.")
 
@@ -217,10 +219,10 @@ def generate_world(
                 kingdom_name,
                 town_name,
                 town_data["description"],
+                nbr_npcs
             )
             town_data["npcs"] = npcs
 
     print("✅ NPCs generated.")
-    save_world(world)
 
     return world
